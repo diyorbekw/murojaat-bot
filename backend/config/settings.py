@@ -133,3 +133,12 @@ ADMIN_INDEX_TITLE = "Boshqaruv paneli"
 
 LOGGING_CONFIG = None
 
+JAZZMIN_SETTINGS = {
+    "site_title": "Murojaatlar Tizimi Admin",
+    "site_header": "Murojaatlar Tizimi",
+    "welcome_sign": "Xush kelibsiz, Murojaatlar Tizimi Admin Paneliga",
+    "search_model": "auth.User",
+    "show_sidebar": True,
+    "navigation_expanded": True,
+    "DEFAULT_API_URL": "https://murojaat.sifatdev.uz",
+}
