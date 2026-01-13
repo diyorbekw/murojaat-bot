@@ -142,3 +142,8 @@ JAZZMIN_SETTINGS = {
     "navigation_expanded": True,
     "DEFAULT_API_URL": "https://murojaat.sifatdev.uz",
 }
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:8000",
+    "https://murojaat.sifatdev.uz",
+]
