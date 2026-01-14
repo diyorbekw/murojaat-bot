@@ -72,8 +72,8 @@ async def process_mahalla(message: Message, state: FSMContext):
     # Validate mahalla
     if message.text not in available_mahallas:
         await message.answer(
-            "Iltimos, ro'yxatdan mahallani tanlang yoki '❌ Bekor qilish' tugmasini bosing.",
-            reply_markup=get_cancel_keyboard()
+            "Iltimos, ro'yxatdan mahallani tanlang.",
+            reply_markup=get_mahalla_keyboard(available_mahallas)
         )
         return
     
@@ -112,8 +112,8 @@ async def process_category(message: Message, state: FSMContext):
     # Validate category
     if message.text not in available_categories:
         await message.answer(
-            "Iltimos, ro'yxatdan muammo turini tanlang yoki '❌ Bekor qilish' tugmasini bosing.",
-            reply_markup=get_cancel_keyboard()
+            "Iltimos, ro'yxatdan muammo turini tanlang.",
+            reply_markup=get_category_keyboard(available_categories)
         )
         return
     
@@ -153,6 +153,16 @@ async def process_description(message: Message, state: FSMContext):
     )
     await state.set_state(ComplaintStates.waiting_for_images)
 
+@router.message(ComplaintStates.waiting_for_description, F.text == "❌ Bekor qilish")
+async def cancel_description(message: Message, state: FSMContext):
+    """
+    Cancel complaint creation from description step
+    """
+    await message.answer(
+        "Murojaat yaratish bekor qilindi.",
+        reply_markup=get_back_to_menu_keyboard()
+    )
+    await state.clear()
 
 @router.message(
     ComplaintStates.waiting_for_images,
@@ -191,6 +201,7 @@ async def process_image(message: Message, state: FSMContext):
         "Yana rasm yuborishingiz yoki '✅ Yuborish' tugmasini bosishingiz mumkin.",
         reply_markup=get_images_keyboard()
     )
+
 
 
 @router.message(ComplaintStates.waiting_for_images, F.text == "✅ Yuborish")
@@ -313,7 +324,7 @@ async def cancel_complaint(message: Message, state: FSMContext):
     """
     await message.answer(
         "Murojaat yaratish bekor qilindi.",
-        reply_markup=remove_keyboard
+        reply_markup=get_back_to_menu_keyboard()
     )
     await state.clear()
 
