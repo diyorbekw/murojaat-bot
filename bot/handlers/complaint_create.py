@@ -131,8 +131,16 @@ async def process_category(message: Message, state: FSMContext):
 @router.message(ComplaintStates.waiting_for_description)
 async def process_description(message: Message, state: FSMContext):
     """
-    Process complaint description
+    Process complaint description or handle cancel
     """
+    if message.text == "❌ Bekor qilish":
+        await message.answer(
+            "Murojaat yaratish bekor qilindi.",
+            reply_markup=get_back_to_menu_keyboard()
+        )
+        await state.clear()
+        return
+
     if len(message.text) < 10:
         await message.answer(
             "Iltimos, muammoni batafsilroq yozing (kamida 10 ta belgi).",
@@ -153,16 +161,6 @@ async def process_description(message: Message, state: FSMContext):
     )
     await state.set_state(ComplaintStates.waiting_for_images)
 
-@router.message(ComplaintStates.waiting_for_description, F.text == "❌ Bekor qilish")
-async def cancel_description(message: Message, state: FSMContext):
-    """
-    Cancel complaint creation from description step
-    """
-    await message.answer(
-        "Murojaat yaratish bekor qilindi.",
-        reply_markup=get_back_to_menu_keyboard()
-    )
-    await state.clear()
 
 @router.message(
     ComplaintStates.waiting_for_images,
