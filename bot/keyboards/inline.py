@@ -9,6 +9,31 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from bot.config import config
 
 
+def get_subcategory_inline_keyboard(subcategories: List[Dict]) -> InlineKeyboardMarkup:
+    """
+    Create inline keyboard for subcategory selection
+    """
+    builder = InlineKeyboardBuilder()
+    
+    # Add subcategory buttons (limit to 6 per row)
+    for subcat in subcategories:
+        title = subcat.get('title', '')
+        if len(title) > 30:
+            title = title[:27] + "..."
+        
+        builder.add(
+            InlineKeyboardButton(
+                text=title,
+                callback_data=f"subcat:{subcat.get('title')}"
+            )
+        )
+    
+    builder.adjust(1)  # One button per row for readability
+    
+    builder.adjust(1)
+    return builder.as_markup()
+
+
 def get_complaint_list_keyboard(complaints: List[Dict], offset: int = 0, limit: int = 5) -> InlineKeyboardMarkup:
     """
     Create inline keyboard for complaints list with pagination
@@ -18,12 +43,22 @@ def get_complaint_list_keyboard(complaints: List[Dict], offset: int = 0, limit: 
     # Add complaint buttons
     for complaint in complaints:
         complaint_id = complaint["id"]
-        category = complaint["category"]
-        status_emoji = "🆕" if complaint["status"] == "new" else "🔄" if complaint["status"] == "in_progress" else "✅" if complaint["status"] == "solved" else "⏳"
+        category = complaint.get('category', {})
+        if isinstance(category, dict):
+            category_name = category.get('name', 'Noma\'lum')
+        else:
+            category_name = str(category)
+        
+        status = complaint.get('status', 'new')
+        status_emoji = "🆕" if status == "new" else "🔄" if status == "in_progress" else "✅" if status == "solved" else "⏳"
+        
+        button_text = f"#{complaint_id} | {category_name} {status_emoji}"
+        if len(button_text) > 50:
+            button_text = button_text[:47] + "..."
         
         builder.add(
             InlineKeyboardButton(
-                text=f"#{complaint_id}",
+                text=button_text,
                 callback_data=f"view_complaint:{complaint_id}"
             )
         )
@@ -64,8 +99,8 @@ def get_complaint_detail_keyboard(complaint_id: int, is_admin: bool = False) -> 
     
     builder.add(
         InlineKeyboardButton(
-            text="📷 Rasmlarni ko'rish",
-            callback_data=f"view_images:{complaint_id}"
+            text="📁 Media fayllar",
+            callback_data=f"view_media:{complaint_id}"
         )
     )
     

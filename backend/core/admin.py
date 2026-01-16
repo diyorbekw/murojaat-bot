@@ -4,27 +4,36 @@ Django admin configuration
 
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import TelegramUser, Mahalla, Category, Complaint, ComplaintImage, StatusHistory, Notification
+from .models import TelegramUser, Mahalla, Category, SubCategory, Complaint, ComplaintImage, StatusHistory, Notification
 
 
 @admin.register(TelegramUser)
 class TelegramUserAdmin(admin.ModelAdmin):
-    """Admin for Telegram users"""
-    list_display = ['telegram_id', 'full_name', 'username', 'role', 'complaints_count', 'created_at']
-    list_filter = ['role', 'created_at']
-    search_fields = ['telegram_id', 'full_name', 'username']
-    readonly_fields = ['created_at', 'last_active']
+    """Admin for Telegram users (yangi versiyasi)"""
+    list_display = ['telegram_id', 'full_name', 'username', 'phone_number', 'age', 
+                   'registration_completed', 'role', 'complaints_count', 'created_at']
+    list_filter = ['role', 'registration_completed', 'is_active', 'created_at']
+    search_fields = ['telegram_id', 'full_name', 'username', 'phone_number']
+    readonly_fields = ['created_at', 'updated_at', 'last_active', 'complaints_count',
+                      'last_complaint_date']
     fieldsets = (
         ('Asosiy ma\'lumotlar', {
-            'fields': ('telegram_id', 'full_name', 'username', 'phone_number', 'role')
+            'fields': ('telegram_id', 'full_name', 'username', 'phone_number', 
+                      'second_phone', 'age', 'language')
+        }),
+        ('Holat va Ruxsat', {
+            'fields': ('is_active', 'is_blocked', 'role', 'registration_completed')
+        }),
+        ('Statistika', {
+            'fields': ('complaints_count', 'last_complaint_date')
         }),
         ('Faollik', {
-            'fields': ('created_at', 'last_active')
+            'fields': ('created_at', 'updated_at', 'last_active')
         }),
     )
     
     def complaints_count(self, obj):
-        return obj.complaints.count()
+        return obj.get_complaints_count()
     complaints_count.short_description = 'Murojaatlar soni'
 
 
@@ -43,8 +52,25 @@ class MahallaAdmin(admin.ModelAdmin):
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
     """Admin for categories"""
-    list_display = ['name', 'icon', 'complaints_count', 'created_at']
+    list_display = ['name', 'icon', 'subcategories_count', 'complaints_count', 'created_at']
     search_fields = ['name']
+    readonly_fields = ['created_at']
+    
+    def subcategories_count(self, obj):
+        return obj.subcategories.count()
+    subcategories_count.short_description = 'Subkategoriyalar soni'
+    
+    def complaints_count(self, obj):
+        return obj.complaints.count()
+    complaints_count.short_description = 'Murojaatlar soni'
+
+
+@admin.register(SubCategory)
+class SubCategoryAdmin(admin.ModelAdmin):
+    """Admin for subcategories"""
+    list_display = ['title', 'category', 'complaints_count', 'created_at']
+    list_filter = ['category']
+    search_fields = ['title', 'category__name']
     readonly_fields = ['created_at']
     
     def complaints_count(self, obj):
@@ -71,15 +97,15 @@ class StatusHistoryInline(admin.TabularInline):
 @admin.register(Complaint)
 class ComplaintAdmin(admin.ModelAdmin):
     """Admin for complaints"""
-    list_display = ['id', 'title', 'user', 'mahalla', 'category', 'status_display', 
-                   'priority_display', 'images_count', 'created_at']
-    list_filter = ['status', 'priority', 'mahalla', 'category', 'created_at']
+    list_display = ['id', 'title', 'user', 'mahalla', 'category', 'subcategory', 
+                   'status_display', 'priority_display', 'images_count', 'created_at']
+    list_filter = ['status', 'priority', 'mahalla', 'category', 'subcategory', 'created_at']
     search_fields = ['title', 'description', 'location', 'admin_notes']
     readonly_fields = ['created_at', 'updated_at', 'resolved_at', 'images_count', 'days_open']
     inlines = [ComplaintImageInline, StatusHistoryInline]
     fieldsets = (
         ('Asosiy ma\'lumotlar', {
-            'fields': ('user', 'mahalla', 'category', 'title', 'description', 'location')
+            'fields': ('user', 'mahalla', 'category', 'subcategory', 'title', 'description', 'location')
         }),
         ('Holat', {
             'fields': ('status', 'priority', 'admin_notes')

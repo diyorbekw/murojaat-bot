@@ -14,8 +14,17 @@ class ComplaintStates(StatesGroup):
     # Step 2: Select category
     waiting_for_category = State()
     
-    # Step 3: Enter description
+    # Step 3: Select subcategory (if available)
+    waiting_for_subcategory = State()
+    
+    # Step 4: Enter description
     waiting_for_description = State()
     
-    # Step 4: Upload images
-    waiting_for_images = State()
+    # Step 5: Upload media (photos, videos, voice, video_notes)
+    waiting_for_media = State()
+    
+    # Step 6: Ask for urgent notification
+    waiting_for_urgent_confirm = State()
+    
+    # Step 7: Ask for location if urgent (only for urgent complaints)
+    waiting_for_location = State()

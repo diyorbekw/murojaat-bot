@@ -14,9 +14,10 @@ router = DefaultRouter()
 router.register(r'users', views.TelegramUserViewSet)
 router.register(r'mahallas', views.MahallaViewSet)
 router.register(r'categories', views.CategoryViewSet)
+router.register(r'subcategories', views.SubCategoryViewSet)  # <-- YANGI
 router.register(r'complaints', views.ComplaintViewSet)
 router.register(r'history', views.StatusHistoryViewSet, basename='history')
-router.register(r'notifications', views.NotificationViewSet, basename='notification')  # basename qo'shildi
+router.register(r'notifications', views.NotificationViewSet, basename='notification')
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -39,10 +40,15 @@ urlpatterns = [
     path('telegram/register/', views.telegram_register_user, name='telegram-register'),
     path('telegram/mahallas/', views.get_mahallas, name='telegram-mahallas'),
     path('telegram/categories/', views.get_categories, name='telegram-categories'),
+    path('telegram/subcategories/', views.get_subcategories, name='telegram-subcategories'),  # <-- YANGI
     path('telegram/webhook/', views.telegram_webhook, name='telegram-webhook'),
+    path('telegram/update_profile/', views.telegram_update_profile, name='telegram-update-profile'),
     
     # Statistics
     path('stats/', views.StatsAPIView.as_view(), name='stats'),
+    
+    # User check endpoint
+    path('check_user_registration/<int:telegram_id>/', views.check_user_registration, name='check-user-registration'),
     
     # Documentation
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),

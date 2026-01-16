@@ -6,11 +6,12 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+import uuid
 
 
 class TelegramUser(models.Model):
     """
-    Telegram user model
+    Telegram user model (yangi versiyasi)
     """
     ROLE_CHOICES = [
         ('user', 'Foydalanuvchi'),
@@ -20,9 +21,21 @@ class TelegramUser(models.Model):
     telegram_id = models.BigIntegerField(unique=True, verbose_name=_("Telegram ID"))
     full_name = models.CharField(max_length=255, verbose_name=_("To'liq ism"))
     username = models.CharField(max_length=255, blank=True, null=True, verbose_name=_("Username"))
-    phone_number = models.CharField(max_length=20, blank=True, null=True, verbose_name=_("Telefon raqam"))
+    phone_number = models.CharField(max_length=20, blank=True, null=True, verbose_name=_("Asosiy telefon raqam"))
+    second_phone = models.CharField(max_length=20, blank=True, null=True, verbose_name=_("Qo'shimcha telefon raqam"))
+    age = models.PositiveIntegerField(blank=True, null=True, verbose_name=_("Yosh"))
+    language = models.CharField(max_length=10, default='uz', verbose_name=_("Til"))
+    is_active = models.BooleanField(default=True, verbose_name=_("Faol"))
+    is_blocked = models.BooleanField(default=False, verbose_name=_("Bloklangan"))
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='user', verbose_name=_("Rol"))
+    registration_completed = models.BooleanField(default=False, verbose_name=_("Ro'yxatdan o'tish tugallandi"))
+    
+    # Statistika uchun
+    complaints_count = models.PositiveIntegerField(default=0, verbose_name=_("Murojaatlar soni"))
+    last_complaint_date = models.DateTimeField(blank=True, null=True, verbose_name=_("Oxirgi murojaat sanasi"))
+    
     created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Yaratilgan sana"))
+    updated_at = models.DateTimeField(auto_now=True, verbose_name=_("Yangilangan sana"))
     last_active = models.DateTimeField(auto_now=True, verbose_name=_("Oxirgi faollik"))
     
     class Meta:
@@ -33,14 +46,28 @@ class TelegramUser(models.Model):
             models.Index(fields=['telegram_id']),
             models.Index(fields=['role']),
             models.Index(fields=['created_at']),
+            models.Index(fields=['is_active']),
+            models.Index(fields=['registration_completed']),
         ]
     
     def __str__(self):
         return f"{self.full_name} (@{self.username})" if self.username else self.full_name
     
-    @property
-    def complaints_count(self):
+    def get_complaints_count(self):
         return self.complaints.count()
+    
+    def update_complaint_stats(self):
+        """Murojaatlar statistikasini yangilash"""
+        self.complaints_count = self.complaints.count()
+        last_complaint = self.complaints.order_by('-created_at').first()
+        if last_complaint:
+            self.last_complaint_date = last_complaint.created_at
+        self.save(update_fields=['complaints_count', 'last_complaint_date'])
+    
+    def complete_registration(self):
+        """Ro'yxatdan o'tishni tugatish"""
+        self.registration_completed = True
+        self.save(update_fields=['registration_completed'])
 
 
 class Mahalla(models.Model):
@@ -79,6 +106,25 @@ class Category(models.Model):
         return f"{self.icon} {self.name}"
 
 
+class SubCategory(models.Model):
+    """
+    Subcategory model for more specific classification
+    """
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='subcategories', verbose_name=_("Kategoriya"))
+    title = models.CharField(max_length=150, verbose_name=_("Subkategoriya nomi"))
+    description = models.TextField(blank=True, null=True, verbose_name=_("Tavsif"))
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Yaratilgan sana"))
+    
+    class Meta:
+        verbose_name = _("Subkategoriya")
+        verbose_name_plural = _("Subkategoriyalar")
+        ordering = ['category', 'title']
+        unique_together = ['category', 'title']
+    
+    def __str__(self):
+        return f"{self.category.name} - {self.title}"
+
+
 class Complaint(models.Model):
     """
     Main complaint model
@@ -101,6 +147,7 @@ class Complaint(models.Model):
     user = models.ForeignKey(TelegramUser, on_delete=models.CASCADE, related_name='complaints', verbose_name=_("Foydalanuvchi"))
     mahalla = models.ForeignKey(Mahalla, on_delete=models.SET_NULL, null=True, related_name='complaints', verbose_name=_("Mahalla"))
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, related_name='complaints', verbose_name=_("Kategoriya"))
+    subcategory = models.ForeignKey(SubCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name='complaints', verbose_name=_("Subkategoriya"))
     title = models.CharField(max_length=200, verbose_name=_("Sarlavha"))
     description = models.TextField(verbose_name=_("Muammo tavsifi"))
     location = models.CharField(max_length=500, blank=True, null=True, verbose_name=_("Aniq manzil"))
@@ -120,6 +167,7 @@ class Complaint(models.Model):
             models.Index(fields=['priority']),
             models.Index(fields=['created_at']),
             models.Index(fields=['mahalla', 'status']),
+            models.Index(fields=['category', 'subcategory']),
         ]
     
     def __str__(self):
@@ -138,6 +186,10 @@ class Complaint(models.Model):
             self.resolved_at = timezone.now()
         
         super().save(*args, **kwargs)
+        
+        # Foydalanuvchi statistikasini yangilash
+        if is_new:
+            self.user.update_complaint_stats()
     
     @property
     def images_count(self):

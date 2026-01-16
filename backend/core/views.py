@@ -11,9 +11,10 @@ from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
 from django_filters import rest_framework as filters
 
-from .models import TelegramUser, Mahalla, Category, Complaint, ComplaintImage, StatusHistory, Notification
+from .models import TelegramUser, Mahalla, Category, SubCategory, Complaint, ComplaintImage, StatusHistory, Notification
 from .serializers import (
-    TelegramUserSerializer, MahallaSerializer, CategorySerializer,
+    TelegramUserSerializer, TelegramUserCreateSerializer, TelegramUserUpdateSerializer,
+    MahallaSerializer, CategorySerializer, SubCategorySerializer,
     ComplaintSerializer, ComplaintCreateSerializer, ComplaintStatusUpdateSerializer,
     ComplaintImageSerializer, StatusHistorySerializer, NotificationSerializer,
     StatsSerializer
@@ -21,12 +22,19 @@ from .serializers import (
 
 
 class TelegramUserViewSet(viewsets.ModelViewSet):
-    """Telegram users API"""
+    """Telegram users API (yangi versiyasi)"""
     queryset = TelegramUser.objects.all().order_by('-created_at')
     serializer_class = TelegramUserSerializer
     permission_classes = [AllowAny]
-    filterset_fields = ['role', 'username']
-    search_fields = ['full_name', 'username', 'telegram_id']
+    filterset_fields = ['role', 'username', 'registration_completed', 'is_active']
+    search_fields = ['full_name', 'username', 'telegram_id', 'phone_number']
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return TelegramUserCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return TelegramUserUpdateSerializer
+        return TelegramUserSerializer
     
     @action(detail=True, methods=['get'])
     def complaints(self, request, pk=None):
@@ -42,12 +50,50 @@ class TelegramUserViewSet(viewsets.ModelViewSet):
         serializer = ComplaintSerializer(complaints, many=True)
         return Response(serializer.data)
     
+    @action(detail=True, methods=['post'])
+    def complete_registration(self, request, pk=None):
+        """Complete user registration"""
+        user = self.get_object()
+        user.complete_registration()
+        return Response({'status': 'Registration completed'})
+    
+    @action(detail=True, methods=['post'])
+    def update_profile(self, request, pk=None):
+        """Update user profile from bot"""
+        user = self.get_object()
+        serializer = TelegramUserUpdateSerializer(user, data=request.data, partial=True)
+        
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
     @action(detail=False, methods=['get'])
     def admins(self, request):
         """Get all admin users"""
         admins = TelegramUser.objects.filter(role='admin').order_by('-created_at')
         serializer = self.get_serializer(admins, many=True)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def unregistered(self, request):
+        """Get unregistered users (registration_completed=False)"""
+        unregistered = TelegramUser.objects.filter(registration_completed=False).order_by('-created_at')
+        serializer = self.get_serializer(unregistered, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def by_telegram_id(self, request):
+        """Get user by telegram_id"""
+        telegram_id = request.query_params.get('telegram_id')
+        if telegram_id:
+            try:
+                user = TelegramUser.objects.get(telegram_id=telegram_id)
+                serializer = self.get_serializer(user)
+                return Response(serializer.data)
+            except TelegramUser.DoesNotExist:
+                return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': 'telegram_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class MahallaViewSet(viewsets.ModelViewSet):
@@ -94,6 +140,50 @@ class CategoryViewSet(viewsets.ModelViewSet):
         
         serializer = ComplaintSerializer(complaints, many=True)
         return Response(serializer.data)
+    
+    @action(detail=True, methods=['get'])
+    def subcategories(self, request, pk=None):
+        """Get category's subcategories"""
+        category = self.get_object()
+        subcategories = category.subcategories.all().order_by('title')
+        serializer = SubCategorySerializer(subcategories, many=True)
+        return Response(serializer.data)
+
+
+class SubCategoryViewSet(viewsets.ModelViewSet):
+    """SubCategories API"""
+    queryset = SubCategory.objects.all().select_related('category').order_by('category__name', 'title')
+    serializer_class = SubCategorySerializer
+    permission_classes = [AllowAny]
+    filterset_fields = ['category']
+    search_fields = ['title', 'description', 'category__name']
+    
+    @action(detail=True, methods=['get'])
+    def complaints(self, request, pk=None):
+        """Get subcategory's complaints"""
+        subcategory = self.get_object()
+        complaints = subcategory.complaints.all().order_by('-created_at')
+        page = self.paginate_queryset(complaints)
+        
+        if page is not None:
+            serializer = ComplaintSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = ComplaintSerializer(complaints, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def by_category(self, request):
+        """Get subcategories by category_id"""
+        category_id = request.query_params.get('category_id')
+        if category_id:
+            try:
+                subcategories = SubCategory.objects.filter(category_id=category_id).order_by('title')
+                serializer = self.get_serializer(subcategories, many=True)
+                return Response(serializer.data)
+            except ValueError:
+                return Response({'error': 'Invalid category_id'}, status=400)
+        return Response({'error': 'category_id parameter required'}, status=400)
 
 
 class ComplaintFilter(filters.FilterSet):
@@ -102,19 +192,20 @@ class ComplaintFilter(filters.FilterSet):
     priority = filters.CharFilter(field_name='priority')
     mahalla = filters.NumberFilter(field_name='mahalla__id')
     category = filters.NumberFilter(field_name='category__id')
+    subcategory = filters.NumberFilter(field_name='subcategory__id')
     user = filters.NumberFilter(field_name='user__id')
     created_after = filters.DateFilter(field_name='created_at', lookup_expr='gte')
     created_before = filters.DateFilter(field_name='created_at', lookup_expr='lte')
     
     class Meta:
         model = Complaint
-        fields = ['status', 'priority', 'mahalla', 'category', 'user']
+        fields = ['status', 'priority', 'mahalla', 'category', 'subcategory', 'user']
 
 
 class ComplaintViewSet(viewsets.ModelViewSet):
     """Complaints API"""
     queryset = Complaint.objects.all().select_related(
-        'user', 'mahalla', 'category'
+        'user', 'mahalla', 'category', 'subcategory'
     ).prefetch_related(
         'images', 'status_history'
     ).order_by('-created_at')
@@ -163,6 +254,9 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                 'username': request.data.get('username')
             }
             complaint = serializer.save()
+            
+            # Foydalanuvchi statistikasini yangilash
+            complaint.user.update_complaint_stats()
             
             # Create notification for admins
             admins = TelegramUser.objects.filter(role='admin')
@@ -310,7 +404,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         
         # Umumiy statistika
         total_complaints = Complaint.objects.count()
-        total_users = TelegramUser.objects.count()
+        total_users = TelegramUser.objects.filter(registration_completed=True).count()
         
         complaints_by_status = dict(
             Complaint.objects.values_list('status').annotate(count=Count('id')).order_by('status')
@@ -320,6 +414,13 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         complaints_by_category = {}
         for cat in Category.objects.all():
             complaints_by_category[cat.name] = cat.complaints.count()
+        
+        # Complaints by subcategory
+        complaints_by_subcategory = {}
+        for subcat in SubCategory.objects.all():
+            count = subcat.complaints.count()
+            if count > 0:
+                complaints_by_subcategory[subcat.title] = count
         
         # Complaints by mahalla
         complaints_by_mahalla = {}
@@ -348,6 +449,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             'total_users': total_users,
             'complaints_by_status': complaints_by_status,
             'complaints_by_category': complaints_by_category,
+            'complaints_by_subcategory': complaints_by_subcategory,
             'complaints_by_mahalla': complaints_by_mahalla,
             'complaints_today': complaints_today,
             'complaints_this_week': complaints_this_week,
@@ -410,7 +512,7 @@ class StatsAPIView(APIView):
     def get(self, request):
         # Get statistics
         total_complaints = Complaint.objects.count()
-        total_users = TelegramUser.objects.count()
+        total_users = TelegramUser.objects.filter(registration_completed=True).count()
         
         # Status distribution
         status_stats = {}
@@ -423,6 +525,13 @@ class StatsAPIView(APIView):
         for category in Category.objects.all():
             count = Complaint.objects.filter(category=category).count()
             category_stats[category.name] = count
+        
+        # Subcategory distribution
+        subcategory_stats = {}
+        for subcategory in SubCategory.objects.all():
+            count = subcategory.complaints.count()
+            if count > 0:
+                subcategory_stats[subcategory.title] = count
         
         # Mahalla distribution
         mahalla_stats = {}
@@ -448,6 +557,7 @@ class StatsAPIView(APIView):
             'total_users': total_users,
             'status_distribution': status_stats,
             'category_distribution': category_stats,
+            'subcategory_distribution': subcategory_stats,
             'mahalla_distribution': mahalla_stats,
             'today_complaints': today_count,
             'week_complaints': week_count,
@@ -484,34 +594,141 @@ def get_categories(request):
     return Response(list(categories))
 
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_subcategories(request):
+    """Get list of subcategories for Telegram bot"""
+    category_id = request.query_params.get('category_id')
+    if category_id:
+        subcategories = SubCategory.objects.filter(category_id=category_id).values('id', 'title')
+    else:
+        subcategories = SubCategory.objects.all().values('id', 'title', 'category_id')
+    return Response(list(subcategories))
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def telegram_register_user(request):
-    """Register Telegram user"""
+    """Register Telegram user (yangi versiyasi)"""
     telegram_id = request.data.get('telegram_id')
     full_name = request.data.get('full_name')
     username = request.data.get('username')
+    phone_number = request.data.get('phone_number')
+    second_phone = request.data.get('second_phone')
+    age = request.data.get('age')
     
     if not telegram_id or not full_name:
         return Response(
-            {'error': 'telegram_id and full_name are required'},
+            {'error': 'telegram_id va full_name majburiy'},
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    user, created = TelegramUser.objects.get_or_create(
-        telegram_id=telegram_id,
-        defaults={
-            'full_name': full_name,
-            'username': username,
-            'role': 'user'
-        }
-    )
+    # Foydalanuvchi bor-yo'qligini tekshirish
+    user_exists = TelegramUser.objects.filter(telegram_id=telegram_id).exists()
     
-    if not created:
-        # Update existing user
+    if user_exists:
+        # Mavjud foydalanuvchini yangilash
+        user = TelegramUser.objects.get(telegram_id=telegram_id)
         user.full_name = full_name
         user.username = username
+        
+        # Agar telefon va yosh kiritilgan bo'lsa
+        if phone_number:
+            user.phone_number = phone_number
+        if second_phone:
+            user.second_phone = second_phone
+        if age:
+            user.age = age
+        
+        # Agar barcha majburiy maydonlar to'ldirilgan bo'lsa
+        if (phone_number and age):
+            user.registration_completed = True
+        
         user.save()
+        serializer = TelegramUserSerializer(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    else:
+        # Yangi foydalanuvchi yaratish
+        data = {
+            'telegram_id': telegram_id,
+            'full_name': full_name,
+            'username': username,
+            'phone_number': phone_number,
+            'second_phone': second_phone,
+            'age': age
+        }
+        
+        serializer = TelegramUserCreateSerializer(data=data)
+        if serializer.is_valid():
+            user = serializer.save()
+            return Response(
+                TelegramUserSerializer(user).data,
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def telegram_update_profile(request):
+    """Update Telegram user profile (alohida endpoint)"""
+    telegram_id = request.data.get('telegram_id')
+    full_name = request.data.get('full_name')
+    phone_number = request.data.get('phone_number')
+    second_phone = request.data.get('second_phone')
+    age = request.data.get('age')
     
+    if not telegram_id:
+        return Response(
+            {'error': 'telegram_id majburiy'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        user = TelegramUser.objects.get(telegram_id=telegram_id)
+    except TelegramUser.DoesNotExist:
+        return Response(
+            {'error': 'Foydalanuvchi topilmadi'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Yangilash
+    if full_name:
+        user.full_name = full_name
+    if phone_number:
+        user.phone_number = phone_number
+    if second_phone:
+        user.second_phone = second_phone
+    if age:
+        user.age = age
+    
+    # Agar barcha majburiy maydonlar to'ldirilgan bo'lsa
+    if (user.phone_number and user.age and user.full_name):
+        user.registration_completed = True
+    
+    user.save()
     serializer = TelegramUserSerializer(user)
-    return Response(serializer.data, status=status.HTTP_200_OK if not created else status.HTTP_201_CREATED)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def check_user_registration(request, telegram_id):
+    """Check if user is registered and has completed registration"""
+    try:
+        user = TelegramUser.objects.get(telegram_id=telegram_id)
+        return Response({
+            'exists': True,
+            'registration_completed': user.registration_completed,
+            'full_name': user.full_name,
+            'phone_number': user.phone_number,
+            'age': user.age,
+            'second_phone': user.second_phone,
+            'username': user.username,
+            'role': user.role
+        })
+    except TelegramUser.DoesNotExist:
+        return Response({
+            'exists': False,
+            'registration_completed': False
+        })

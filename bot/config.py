@@ -21,7 +21,10 @@ class Config:
     
     # Channel ID for storing images (must be public or bot must be admin)
     CHANNEL_ID: int = int(os.getenv("CHANNEL_ID", "-1003690999820"))
-    
+
+    # Group ID for user complaints
+    GROUP_ID: int = int(os.getenv("GROUP_ID", "-5202556656"))
+
     # Admin Telegram IDs (comma-separated in env)
     admin_ids_str = os.getenv("ADMIN_IDS", "7612526446")
     ADMIN_IDS: Set[int] = set(
