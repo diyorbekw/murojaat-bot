@@ -33,7 +33,7 @@ class UserData:
 class DjangoAPIClient:
     """Async client for Django API"""
     
-    def __init__(self, base_url: str = "http://localhost:8000/api"):
+    def __init__(self, base_url: str = "https://murojaat.sifatdev.uz/api"):
         self.base_url = base_url
         self.session: Optional[aiohttp.ClientSession] = None
     
